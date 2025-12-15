@@ -2,7 +2,6 @@
 
 namespace Maatwebsite\Excel;
 
-use Illuminate\Pipeline\Pipeline;
 use PhpOffice\PhpSpreadsheet\Calculation\Exception;
 use PhpOffice\PhpSpreadsheet\Cell\Cell as SpreadsheetCell;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -55,22 +54,30 @@ class Cell
      */
     public function getValue($nullValue = null, $calculateFormulas = false, $formatData = true)
     {
+        return self::getValueFromSpreadsheetCell($this->cell, $nullValue, $calculateFormulas, $formatData);
+    }
+
+    public static function getValueFromSpreadsheetCell(SpreadsheetCell $cell, $nullValue = null, $calculateFormulas = false, $formatData = true)
+    {
         $value = $nullValue;
-        if ($this->cell->getValue() !== null) {
-            if ($this->cell->getValue() instanceof RichText) {
-                $value = $this->cell->getValue()->getPlainText();
+
+        $cellValue = $cell->getValue();
+
+        if ($cellValue !== null) {
+            if ($cellValue instanceof RichText) {
+                $value = $cellValue->getPlainText();
             } elseif ($calculateFormulas) {
                 try {
-                    $value = $this->cell->getCalculatedValue();
-                } catch (Exception $e) {
-                    $value = $this->cell->getOldCalculatedValue();
+                    $value = $cell->getCalculatedValue();
+                } catch (Exception) {
+                    $value = $cell->getOldCalculatedValue();
                 }
             } else {
-                $value = $this->cell->getValue();
+                $value = $cellValue;
             }
 
             if ($formatData) {
-                $style = $this->cell->getWorksheet()->getParent()->getCellXfByIndex($this->cell->getXfIndex());
+                $style = $cell->getWorksheet()->getParent()->getCellXfByIndex($cell->getXfIndex());
                 $value = NumberFormat::toFormattedString(
                     $value,
                     ($style && $style->getNumberFormat()) ? $style->getNumberFormat()->getFormatCode() : NumberFormat::FORMAT_GENERAL
@@ -78,6 +85,10 @@ class Cell
             }
         }
 
-        return app(Pipeline::class)->send($value)->through(config('excel.imports.cells.middleware', []))->thenReturn();
+        foreach (config('excel.imports.cells.middleware', []) as $pipe) {
+            $value = $pipe($value);
+        }
+
+        return $value;
     }
 }

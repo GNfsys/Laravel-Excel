@@ -97,7 +97,7 @@ class Row implements ArrayAccess
 
         $i = 0;
         foreach ($this->row->getCellIterator('A', $endColumn) as $cell) {
-            $value = (new Cell($cell))->getValue($nullValue, $calculateFormulas, $formatData);
+            $value = Cell::getValueFromSpreadsheetCell($cell, $nullValue, $calculateFormulas, $formatData);
 
             if (isset($this->headingRow[$i])) {
                 if (!$this->headerIsGrouped[$i]) {
