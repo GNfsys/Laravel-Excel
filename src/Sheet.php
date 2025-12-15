@@ -12,6 +12,7 @@ use Maatwebsite\Excel\Concerns\FromGenerator;
 use Maatwebsite\Excel\Concerns\FromIterator;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\FromView;
+use Maatwebsite\Excel\Concerns\OnEachIteratorRow;
 use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
@@ -282,18 +283,34 @@ class Sheet
             $headerIsGrouped     = HeadingRowExtractor::extractGrouping($headingRow, $import);
             $endColumn           = $import instanceof WithColumnLimit ? $import->endColumn() : null;
             $preparationCallback = $this->getPreparationCallback($import);
+            $withCalculatedFormulas = $import instanceof WithCalculatedFormulas;
+            $withFormatData = $import instanceof WithFormatData;
+            $skipEmptyRows = $import instanceof SkipsEmptyRows;
+            $checkEmptyFromImport = $skipEmptyRows && method_exists($import, 'isEmptyWhen');
+            $withValidation = $import instanceof WithValidation;
+            $needsRowArray = $checkEmptyFromImport || $withValidation;
+            $skipsOnError = $import instanceof SkipsOnError;
+            $advanceProgressBar = $import instanceof WithProgressBar;
 
             foreach ($this->worksheet->getRowIterator()->resetStart($startRow ?? 1) as $row) {
                 $sheetRow = new Row($row, $headingRow, $headerIsGrouped);
+                $rowArray = null;
+                $rowIsEmptyAccordingToImport = false;
 
-                if ($import instanceof WithValidation) {
+                if ($withValidation) {
                     $sheetRow->setPreparationCallback($preparationCallback);
                 }
 
-                $rowArray                    = $sheetRow->toArray(null, $import instanceof WithCalculatedFormulas, $import instanceof WithFormatData, $endColumn);
-                $rowIsEmptyAccordingToImport = $import instanceof SkipsEmptyRows && method_exists($import, 'isEmptyWhen') && $import->isEmptyWhen($rowArray);
-                if (!$import instanceof SkipsEmptyRows || ($import instanceof SkipsEmptyRows && (!$rowIsEmptyAccordingToImport && !$sheetRow->isEmpty($calculatesFormulas)))) {
-                    if ($import instanceof WithValidation) {
+                if ($needsRowArray) {
+                    $rowArray = $sheetRow->toArray(null, $withCalculatedFormulas, $withFormatData, $endColumn);
+                }
+
+                if ($checkEmptyFromImport) {
+                    $rowIsEmptyAccordingToImport = $import->isEmptyWhen($rowArray);
+                }
+
+                if (!$skipEmptyRows || (!$rowIsEmptyAccordingToImport && !$sheetRow->isEmpty($calculatesFormulas))) {
+                    if ($withValidation) {
                         $toValidate = [$sheetRow->getIndex() => $rowArray];
 
                         try {
@@ -301,7 +318,7 @@ class Sheet
                             $import->onRow($sheetRow);
                         } catch (RowSkippedException $e) {
                         } catch (Throwable $e) {
-                            if ($import instanceof SkipsOnError) {
+                            if ($skipsOnError) {
                                 $import->onError($e);
                             } else {
                                 throw $e;
@@ -311,7 +328,7 @@ class Sheet
                         try {
                             $import->onRow($sheetRow);
                         } catch (Throwable $e) {
-                            if ($import instanceof SkipsOnError) {
+                            if ($skipsOnError) {
                                 $import->onError($e);
                             } else {
                                 throw $e;
@@ -320,7 +337,7 @@ class Sheet
                     }
                 }
 
-                if ($import instanceof WithProgressBar) {
+                if ($advanceProgressBar) {
                     $import->getConsoleOutput()->progressAdvance();
                 }
             }

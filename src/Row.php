@@ -5,6 +5,7 @@ namespace Maatwebsite\Excel;
 use ArrayAccess;
 use Closure;
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\Worksheet\CellIterator;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row as SpreadsheetRow;
 
 /** @mixin SpreadsheetRow */
@@ -129,6 +130,10 @@ class Row implements ArrayAccess
      */
     public function isEmpty($calculateFormulas = false, ?string $endColumn = null): bool
     {
+        if ($calculateFormulas === false) {
+            return $this->row->isEmpty(CellIterator::TREAT_NULL_VALUE_AS_EMPTY_CELL | CellIterator::TREAT_EMPTY_STRING_AS_EMPTY_CELL, endColumn: $endColumn);
+        }
+
         return count(array_filter($this->toArray(null, $calculateFormulas, false, $endColumn))) === 0;
     }
 
